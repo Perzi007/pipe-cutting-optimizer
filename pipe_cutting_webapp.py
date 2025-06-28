@@ -1,74 +1,36 @@
 # This version is designed to run in a general Python environment without Streamlit
 # It reads an input file (CSV or Excel), performs best-fit pipe cutting, and outputs a summary Excel file
 
-import pandas as pd
-from math import ceil
-from pathlib import Path
+import streamlit as st
 
-PIPE_LENGTH = 6.0
-INPUT_FILE = "cut_lengths.xlsx"  # Change to your input file name
-OUTPUT_FILE = "pipe_cutting_summary.xlsx"
+st.set_page_config(page_title="Pipe Cutting Optimizer", layout="centered")
+st.title("🧮 Pipe Cutting Optimizer")
 
-# Function to parse uploaded file
-def parse_file(file_path):
-    if file_path.endswith(".csv"):
-        df = pd.read_csv(file_path, header=None)
-    elif file_path.endswith(".xlsx"):
-        df = pd.read_excel(file_path, header=None)
-    else:
-        raise ValueError("Unsupported file format.")
-    cuts = df.values.flatten().tolist()
-    return [float(c) for c in cuts if pd.notnull(c)]
+stock_length = st.number_input("🧱 Stock pipe length (m):", min_value=0.5, value=6.0, step=0.5)
+input_str = st.text_area("✂️ Pipe lengths (comma separated)", "2.5, 3.1, 1.2, 2.8")
 
-# Split any length > 6m
-def split_long_lengths(lengths):
-    result = []
-    for length in lengths:
-        while length > PIPE_LENGTH:
-            result.append(PIPE_LENGTH)
-            length -= PIPE_LENGTH
-        if length > 0:
-            result.append(round(length, 2))
-    return result
+if st.button("🚀 Calculate"):
+    try:
+        lengths = list(map(float, input_str.split(",")))
+        lengths.sort(reverse=True)
 
-# Best Fit Strategy
-def best_fit(cuts):
-    cuts = sorted(cuts, reverse=True)
-    bins = []
-    for cut in cuts:
-        placed = False
-        best_idx = -1
-        min_space = PIPE_LENGTH + 1
-        for i, bin in enumerate(bins):
-            if 0 <= bin['remaining'] - cut < min_space:
-                best_idx = i
-                min_space = bin['remaining'] - cut
-        if best_idx >= 0:
-            bins[best_idx]['cuts'].append(cut)
-            bins[best_idx]['remaining'] -= cut
-        else:
-            bins.append({'cuts': [cut], 'remaining': PIPE_LENGTH - cut})
-    return bins
+        result = []
+        for length in lengths:
+            placed = False
+            for r in result:
+                if sum(r) + length <= stock_length:
+                    r.append(length)
+                    placed = True
+                    break
+            if not placed:
+                result.append([length])
 
-# Main execution
-if __name__ == "__main__":
-    if not Path(INPUT_FILE).exists():
-        print(f"Input file '{INPUT_FILE}' not found.")
-    else:
-        raw_cuts = parse_file(INPUT_FILE)
-        preprocessed = split_long_lengths(raw_cuts)
-        results = best_fit(preprocessed)
+        st.success(f"✅ Total pipes needed: {len(result)}")
+        for i, group in enumerate(result, 1):
+            used = sum(group)
+            waste = stock_length - used
+            st.write(f"Pipe {i}: {group} (Used: {used:.2f} / Waste: {waste:.2f} m)")
 
-        print(f"✅ Minimum pipes required: {len(results)}")
-        print(f"♻️ Total scrap length: {round(sum(r['remaining'] for r in results), 2)} meters")
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
 
-        df_summary = pd.DataFrame([
-            {"Pipe #": i+1, "Used Length (m)": round(PIPE_LENGTH - r['remaining'], 2),
-             "Scrap (m)": round(r['remaining'], 2), "Cuts": ", ".join(map(str, r['cuts']))}
-            for i, r in enumerate(results)
-        ])
-
-        with pd.ExcelWriter(OUTPUT_FILE, engine='xlsxwriter') as writer:
-            df_summary.to_excel(writer, sheet_name='BestFitSummary', index=False)
-
-        print(f"📁 Summary saved to '{OUTPUT_FILE}'")
