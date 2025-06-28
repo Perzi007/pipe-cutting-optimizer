@@ -1,36 +1,57 @@
-# This version is designed to run in a general Python environment without Streamlit
-# It reads an input file (CSV or Excel), performs best-fit pipe cutting, and outputs a summary Excel file
 
 import streamlit as st
+import pandas as pd
+from io import BytesIO
 
 st.set_page_config(page_title="Pipe Cutting Optimizer", layout="centered")
-st.title("🧮 Pipe Cutting Optimizer")
+st.title("🧮 Pipe Cutting Optimizer with Waste & Export")
 
 stock_length = st.number_input("🧱 Stock pipe length (m):", min_value=0.5, value=6.0, step=0.5)
-input_str = st.text_area("✂️ Pipe lengths (comma separated)", "2.5, 3.1, 1.2, 2.8")
+input_str = st.text_area("✂️ Pipe lengths to cut (comma separated)", "2.5, 3.1, 1.2, 2.8, 1.5, 3.0")
+
+def best_fit_with_waste(needed_lengths, stock_length):
+    needed_lengths.sort(reverse=True)
+    stocks = []
+    for length in needed_lengths:
+        placed = False
+        for stock in stocks:
+            if sum(stock) + length <= stock_length:
+                stock.append(length)
+                placed = True
+                break
+        if not placed:
+            stocks.append([length])
+    results = []
+    for i, stock in enumerate(stocks, 1):
+        used = sum(stock)
+        waste = stock_length - used
+        results.append({
+            "Pipe #": f"Pipe {i}",
+            "Cut pieces": stock,
+            "Used (m)": round(used, 2),
+            "Waste (m)": round(waste, 2)
+        })
+    return results
+
+def convert_df_to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Pipe Summary")
+    output.seek(0)
+    return output
 
 if st.button("🚀 Calculate"):
     try:
         lengths = list(map(float, input_str.split(",")))
-        lengths.sort(reverse=True)
+        result = best_fit_with_waste(lengths, stock_length)
+        df = pd.DataFrame(result)
 
-        result = []
-        for length in lengths:
-            placed = False
-            for r in result:
-                if sum(r) + length <= stock_length:
-                    r.append(length)
-                    placed = True
-                    break
-            if not placed:
-                result.append([length])
+        st.success(f"✅ Total pipes needed: {len(df)}")
+        st.dataframe(df, use_container_width=True)
 
-        st.success(f"✅ Total pipes needed: {len(result)}")
-        for i, group in enumerate(result, 1):
-            used = sum(group)
-            waste = stock_length - used
-            st.write(f"Pipe {i}: {group} (Used: {used:.2f} / Waste: {waste:.2f} m)")
+        # Export
+        excel_data = convert_df_to_excel(df)
+        st.download_button("📥 Download Excel", data=excel_data, file_name="pipe_cutting_result.xlsx")
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
-
