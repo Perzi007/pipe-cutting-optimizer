@@ -4,34 +4,37 @@ import pandas as pd
 from io import BytesIO
 
 st.set_page_config(page_title="Pipe Cutting Optimizer", layout="centered")
-st.title("🧮 Pipe Cutting Optimizer with Waste & Export")
+st.title("🧮 Pipe Cutting Optimizer with Waste Fix")
 
 stock_length = st.number_input("🧱 Stock pipe length (m):", min_value=0.5, value=6.0, step=0.5)
 input_str = st.text_area("✂️ Pipe lengths to cut (comma separated)", "2.5, 3.1, 1.2, 2.8, 1.5, 3.0")
 
 def best_fit_with_waste(needed_lengths, stock_length):
     needed_lengths.sort(reverse=True)
-    stocks = []
+    bins = []
+
     for length in needed_lengths:
         placed = False
-        for stock in stocks:
-            if sum(stock) + length <= stock_length:
-                stock.append(length)
+        for b in bins:
+            used = sum(b)
+            if used + length <= stock_length:
+                b.append(length)
                 placed = True
                 break
         if not placed:
-            stocks.append([length])
-    results = []
-    for i, stock in enumerate(stocks, 1):
-        used = sum(stock)
-        waste = stock_length - used
-        results.append({
+            bins.append([length])
+
+    result = []
+    for i, b in enumerate(bins, 1):
+        used = sum(b)
+        waste = round(stock_length - used, 2)
+        result.append({
             "Pipe #": f"Pipe {i}",
-            "Cut pieces": stock,
-            "Used (m)": round(used, 2),
-            "Waste (m)": round(waste, 2)
+            "Cut pieces": b,
+            "Used (m)": used,
+            "Waste (m)": waste
         })
-    return results
+    return result
 
 def convert_df_to_excel(df):
     output = BytesIO()
@@ -49,9 +52,8 @@ if st.button("🚀 Calculate"):
         st.success(f"✅ Total pipes needed: {len(df)}")
         st.dataframe(df, use_container_width=True)
 
-        # Export
         excel_data = convert_df_to_excel(df)
-        st.download_button("📥 Download Excel", data=excel_data, file_name="pipe_cutting_result.xlsx")
+        st.download_button("📥 Download Excel", data=excel_data, file_name="pipe_cutting_result_fixed.xlsx")
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
